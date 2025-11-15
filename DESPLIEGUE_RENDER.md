@@ -43,8 +43,8 @@ postgresql://user:password@ep-xxxxx.us-east-2.aws.neon.tech/neondb?sslmode=requi
 - **Region**: La misma que elegiste para la base de datos
 - **Branch**: `main` (o tu rama principal)
 - **Root Directory**: `Backend` (si tu código está en una carpeta Backend)
-- **Runtime**: `Python 3`
-- **Build Command**: `pip install -r requirements.txt`
+- **Runtime**: `Python 3` (Render detectará la versión del archivo `runtime.txt`)
+- **Build Command**: `pip install --upgrade pip && pip install -r requirements.txt`
 - **Start Command**: `uvicorn main:app --host 0.0.0.0 --port $PORT`
 
 ### ⚠️ Importante:
