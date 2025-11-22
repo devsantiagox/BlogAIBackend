@@ -66,17 +66,23 @@ app = FastAPI(
 # Configurar CORS
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
+# Lista de orígenes permitidos (desarrollo local)
+allowed_origins = [
+    FRONTEND_URL,
+    "http://localhost:3000",
+    "http://localhost:8080",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:8080",
+]
+
+# Filtrar URLs vacías
+allowed_origins = [origin for origin in allowed_origins if origin]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        FRONTEND_URL,
-        "http://localhost:3000",
-        "http://localhost:8080",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:8080",
-        # Permitir cualquier subdominio de github.io
-        "https://*.github.io",
-    ],
+    allow_origins=allowed_origins,
+    # Permitir cualquier subdominio de github.io usando regex (ej: https://devsantiagox.github.io)
+    allow_origin_regex=r"https://.*\.github\.io",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
