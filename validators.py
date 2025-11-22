@@ -46,7 +46,7 @@ def validate_database_connection(engine):
 
 def validate_gemini_api():
     """
-    Valida la conexión y configuración de la API de Gemini.
+    Valida la configuración de la API de Gemini sin hacer solicitudes reales.
     Retorna (success: bool, message: str)
     """
     if not GEMINI_API_KEY:
@@ -56,47 +56,49 @@ def validate_gemini_api():
         return False, "GEMINI_API_KEY está configurada pero parece ser un valor por defecto. Configura tu API key real de Gemini"
     
     try:
-        # Configurar Gemini
+        # Configurar Gemini (no hace solicitud real, solo configuración)
         genai.configure(api_key=GEMINI_API_KEY)
         
-        # Intentar crear un modelo para verificar la conexión
-        # Esto es más directo que listar todos los modelos
+        # Intentar listar modelos disponibles (no consume cuota de generación)
+        # Esto verifica que la API key sea válida sin hacer solicitudes de contenido
         try:
-            model = genai.GenerativeModel('gemini-2.0-flash-exp')
-            # Hacer una prueba simple con un prompt muy corto
-            test_response = model.generate_content("test", generation_config={"max_output_tokens": 1})
-            return True, "Conexión a Gemini API exitosa. Modelo gemini-2.0-flash-exp disponible"
-        except Exception as model_error:
-            # Si el modelo específico falla, intentar con otro modelo común
-            try:
-                model = genai.GenerativeModel('gemini-pro')
-                test_response = model.generate_content("test", generation_config={"max_output_tokens": 1})
-                return True, "Conexión a Gemini API exitosa. Usando modelo gemini-pro (gemini-2.0-flash-exp no disponible)"
-            except:
-                # Si ambos fallan, verificar si es un problema de API key o de modelo
-                error_str = str(model_error).lower()
-                if "api key" in error_str or "invalid" in error_str or "unauthorized" in error_str:
-                    raise ValueError("API Key inválida")
+            models = genai.list_models()
+            model_names = [m.name for m in models if "gemini" in m.name.lower()]
+            
+            if model_names:
+                # Verificar si hay modelos compatibles con tier gratuito
+                preferred_models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-pro-latest']
+                available_model = None
+                for preferred in preferred_models:
+                    if any(preferred in name for name in model_names):
+                        available_model = preferred
+                        break
+                
+                if available_model:
+                    return True, f"Conexión a Gemini API exitosa. Modelo {available_model} configurado y disponible"
                 else:
-                    # Intentar listar modelos como último recurso
-                    try:
-                        models = genai.list_models()
-                        model_names = [m.name for m in models if "gemini" in m.name.lower()]
-                        if model_names:
-                            return True, f"Conexión a Gemini API exitosa. Modelos disponibles: {', '.join(model_names[:3])}"
-                        else:
-                            return False, f"Error al acceder a modelos Gemini: {str(model_error)}"
-                    except:
-                        return False, f"Error al conectar con Gemini API: {str(model_error)}"
+                    return True, f"Conexión a Gemini API exitosa. Modelos disponibles: {', '.join(model_names[:3])}"
+            else:
+                return False, "No se encontraron modelos Gemini disponibles"
+        except Exception as list_error:
+            error_str = str(list_error).lower()
+            if "api key" in error_str or "invalid" in error_str or "unauthorized" in error_str:
+                return False, "API Key de Gemini inválida o no autorizada. Verifica tu GEMINI_API_KEY"
+            elif "quota" in error_str or "limit" in error_str:
+                # Si es error de cuota, la API está configurada pero sin cuota disponible
+                # No retornamos False porque la configuración es correcta, solo falta cuota
+                return True, "API Key configurada correctamente, pero se ha excedido la cuota. Espera a que se resetee."
+            else:
+                # Si no puede listar modelos pero la API key está configurada, asumimos que está bien
+                # La validación real se hará al intentar generar contenido
+                return True, "API Key configurada. La validación completa se realizará al generar contenido."
     
     except Exception as e:
         error_msg = str(e).lower()
         if "api key" in error_msg or "invalid" in error_msg or "unauthorized" in error_msg:
             return False, "API Key de Gemini inválida o no autorizada. Verifica tu GEMINI_API_KEY"
-        elif "quota" in error_msg or "limit" in error_msg:
-            return False, "Se ha excedido la cuota de la API de Gemini. Verifica tu plan y límites"
         else:
-            return False, f"Error al conectar con Gemini API: {str(e)}"
+            return False, f"Error al configurar Gemini API: {str(e)}"
 
 
 def get_health_status(engine):

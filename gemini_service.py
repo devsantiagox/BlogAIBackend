@@ -3,6 +3,7 @@ import os
 from dotenv import load_dotenv
 import json
 import re
+import time
 
 load_dotenv()
 
@@ -20,7 +21,34 @@ def generate_blog_post(prompt: str) -> dict:
     if not GEMINI_API_KEY:
         raise ValueError("GEMINI_API_KEY no está configurada")
 
-    model = genai.GenerativeModel('gemini-2.0-flash-exp')
+    # Usar modelo disponible - gemini-2.5-flash es el modelo flash más reciente disponible
+    # Intentar con modelos en orden de preferencia
+    models_to_try = [
+        'gemini-2.5-flash',      # Modelo flash más reciente (preferido)
+        'gemini-2.0-flash',      # Modelo flash alternativo
+        'gemini-pro-latest'      # Fallback
+    ]
+    
+    model = None
+    model_name = None
+    last_error = None
+    
+    for model_name in models_to_try:
+        try:
+            model = genai.GenerativeModel(model_name)
+            # Verificar que el modelo funciona intentando usarlo (sin generar contenido todavía)
+            # Solo verificamos que se puede instanciar, no generamos contenido
+            break
+        except Exception as e:
+            last_error = str(e)
+            continue
+    
+    if model is None:
+        raise ValueError(
+            f"No se pudo cargar ningún modelo de Gemini disponible. "
+            f"Modelos intentados: {', '.join(models_to_try)}. "
+            f"Último error: {last_error}"
+        )
 
     system_prompt = """Eres un experto escritor de blogs. Genera un artículo de blog completo basado en el prompt proporcionado.
 
@@ -78,6 +106,16 @@ No incluyas ningún texto adicional fuera del JSON."""
         }
     
     except Exception as e:
-        raise Exception(f"Error al generar el artículo con Gemini: {str(e)}")
+        error_str = str(e)
+        # Manejar errores de cuota específicamente
+        if "429" in error_str or "quota" in error_str.lower() or "limit" in error_str.lower():
+            raise ValueError(
+                "Se ha excedido la cuota de la API de Gemini. "
+                "Por favor, verifica tu plan y límites en https://ai.dev/usage. "
+                "El tier gratuito tiene límites de uso por minuto. "
+                f"Error: {error_str[:200]}"
+            )
+        # Otros errores
+        raise Exception(f"Error al generar el artículo con Gemini: {error_str}")
 
 

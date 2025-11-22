@@ -119,25 +119,42 @@ async def register(user: UserCreate, db: Session = Depends(get_db)):
     """
     Registra un nuevo usuario
     """
-    # Verificar si el usuario ya existe
-    db_user = db.query(User).filter(User.email == user.email).first()
-    if db_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El email ya está registrado"
+    try:
+        # Verificar si el usuario ya existe
+        db_user = db.query(User).filter(User.email == user.email).first()
+        if db_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El email ya está registrado"
+            )
+        
+        # Crear nuevo usuario
+        hashed_password = get_password_hash(user.password)
+        db_user = User(
+            email=user.email,
+            hashed_password=hashed_password
         )
+        db.add(db_user)
+        db.commit()
+        db.refresh(db_user)
+        
+        return db_user
     
-    # Crear nuevo usuario
-    hashed_password = get_password_hash(user.password)
-    db_user = User(
-        email=user.email,
-        hashed_password=hashed_password
-    )
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    
-    return db_user
+    except HTTPException:
+        # Re-raise HTTP exceptions (como el email duplicado)
+        raise
+    except Exception as e:
+        # Rollback en caso de error
+        db.rollback()
+        # Log del error para debugging
+        import traceback
+        error_detail = f"Error al registrar usuario: {str(e)}"
+        print(f"ERROR en /register: {error_detail}")
+        print(traceback.format_exc())
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=error_detail
+        )
 
 
 @app.post("/token", response_model=Token)
@@ -173,14 +190,6 @@ async def generate_post(
     """
     Genera un artículo de blog usando IA (protegido por JWT)
     """
-    # Validar que Gemini API esté disponible antes de generar
-    gemini_valid, gemini_message = validate_gemini_api()
-    if not gemini_valid:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Servicio de IA no disponible: {gemini_message}"
-        )
-    
     try:
         # Generar el artículo usando Gemini
         generated_content = generate_blog_post(post_data.prompt)
@@ -200,14 +209,30 @@ async def generate_post(
         return db_post
     
     except ValueError as e:
+        error_str = str(e)
+        # Manejar errores de cuota como 429 (Too Many Requests)
+        if "cuota" in error_str.lower() or "quota" in error_str.lower() or "429" in error_str:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=error_str
+            )
+        # Otros errores de validación
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
+            detail=error_str
         )
     except Exception as e:
+        error_str = str(e)
+        # Manejar errores de cuota de Gemini
+        if "429" in error_str or "quota" in error_str.lower() or "limit" in error_str.lower():
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Se ha excedido la cuota de la API de Gemini. Por favor espera un minuto antes de intentar nuevamente. Error: {error_str[:200]}"
+            )
+        # Otros errores
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al generar el artículo: {str(e)}"
+            detail=f"Error al generar el artículo: {error_str}"
         )
 
 

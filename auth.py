@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
-from passlib.context import CryptContext
+import bcrypt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
@@ -18,16 +18,38 @@ SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
-
-
 def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
+    """
+    Hashea una contraseña usando bcrypt.
+    bcrypt tiene un límite de 72 bytes, así que truncamos si es necesario.
+    """
+    # Convertir a bytes y truncar a 72 bytes si es necesario
+    password_bytes = password.encode('utf-8')
+    if len(password_bytes) > 72:
+        password_bytes = password_bytes[:72]
+    
+    # Generar salt y hash
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(password_bytes, salt)
+    # Retornar como string
+    return hashed.decode('utf-8')
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """
+    Verifica una contraseña contra un hash bcrypt.
+    """
+    # Convertir a bytes
+    password_bytes = plain_password.encode('utf-8')
+    # Truncar si es necesario
+    if len(password_bytes) > 72:
+        password_bytes = password_bytes[:72]
+    
+    hashed_bytes = hashed_password.encode('utf-8')
+    return bcrypt.checkpw(password_bytes, hashed_bytes)
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
